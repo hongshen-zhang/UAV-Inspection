@@ -1,4 +1,4 @@
-# This repository publishes source code only. Experiments generate data locally.
+# Source and the paper figures are published; experiment data are generated locally.
 .venv/
 __pycache__/
 *.py[cod]
@@ -12,6 +12,8 @@ __pycache__/
 *.jsonl
 *.gz
 *.pdf
+!Figure*/figure*.pdf
+!Table/table.pdf
 *.png
 *.svg
 *.zip
@@ -19,4 +21,3 @@ data/
 nominal_case/
 runtime/
 reproduced/
-experiments_460kJ/

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot current paper Figure5 from locally generated data/results.csv.
+"""Plot current paper Figure6 from locally generated data/results.csv.
 
 Run experiment.py first, then: python plot.py --input data/results.csv
 No experiment data or stored outcomes are included in this plotting code.
@@ -13,4 +13,4 @@ sys.path.insert(0, str(HERE.parent / "simulation"))
 from current.plotting import main
 
 if __name__ == "__main__":
-    main('Figure5', HERE)
+    main('Figure6', HERE)

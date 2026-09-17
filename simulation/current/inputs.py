@@ -3,7 +3,7 @@
 No stored observations, sample banks, CSV files or NPZ archives are read.
 Study names use the paper numbering: Figure4 is the main comparison,
 Figure5 the time sweep, Figure6 the energy sweep and Figure7 the ablation.
-The legacy top-level folders use the mapping in LEGACY_STUDIES.
+Top-level Figure1–Figure11 folders follow the paper numbering; Table is Table IV.
 
 ``public = build_case(study, point)`` returns only the 15 public model arrays
 as dictionary keys. Its attributes retain the generation settings, so pass
@@ -43,11 +43,6 @@ METHODS = ('Proposed', 'Weight Greedy', 'Mean-workload Greedy',
 PUBLIC_NAMES = ('weights', 'deadline', 'mu', 'sigma', 'pars', 'aa', 'bb',
                 'dd', 'ee', 'flight_time', 'flight_energy', 'points',
                 'probabilities', 'mec_frequencies', 'mean_workloads')
-LEGACY_STUDIES = {'Figure5': 'Figure4', 'Figure6': 'Figure5',
-                  'Figure7': 'Figure6', 'Figure12': 'Figure7',
-                  'Figure8': 'Figure8', 'Figure9': 'Figure9',
-                  'Figure10': 'Figure10', 'Figure11': 'Figure11',
-                  'PriorityRobustness': 'Table4'}
 ABLATION_VARIANTS = {
     'proposed': 'Proposed', 'mean_workload_dp': 'Mean-workload DP',
     'no_priority': 'No priority factor', 'top_myopic': 'Myopic Top',

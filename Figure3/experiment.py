@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Run the actual nominal mission for the Top/Sub decision example.
+"""Run the nominal mission for paper Figure 3's Macau route illustration.
 
 Dependencies: numpy, scipy, numba (see ../simulation for readable algorithm code).
 Run: python experiment.py
 Then: python plot.py
-Inputs and fresh results are generated locally in data/.
+Fresh results are generated locally in data/ from public model parameters.
 The default seed is the first formal nominal seed, 2026092000.
 """
 from __future__ import annotations
@@ -16,17 +16,18 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-sys.path.insert(0, str(ROOT / 'simulation'))
+sys.path.insert(0, str(ROOT))
 
-from mission_replay import SEED, run
+from simulation.current.inputs import SEED_START
+from simulation.current.route import run
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--seed', type=int, default=SEED)
+    parser.add_argument('--seed', type=int, default=SEED_START)
     parser.add_argument('--output-dir', type=Path, default=HERE / 'data')
     args = parser.parse_args()
-    result = run(args.seed, case_path=args.output_dir / 'nominal_case')
+    result = run(args.seed)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     output = args.output_dir / 'replay.json'
     output.write_text(json.dumps(result, indent=2, allow_nan=False) + '\n', encoding='utf-8')
