@@ -15,6 +15,7 @@ __pycache__/
 !Figure*/figure*.pdf
 !Table/table.pdf
 *.png
+!Figure1/figure1.png
 *.svg
 *.zip
 data/
