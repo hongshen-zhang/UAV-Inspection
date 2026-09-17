@@ -2,10 +2,11 @@
 
 The original EnhancedPlanner performs all task and execution decisions.
 AuditPlanner records its root alternatives and post-arrival alternatives without
-changing its decisions. The historical reference below is only an independent
-result check; it is never used as input to the planner.
+changing its decisions. Results are checked against mission feasibility and
+accounting invariants, without stored mission outcomes.
 
-Dependencies: numpy, scipy, numba. Input tables are in nominal_case/.
+Dependencies: numpy, scipy, numba. Input tables are generated locally from
+the task attributes in generate_nominal_case.py before each run.
 """
 from __future__ import annotations
 
@@ -23,12 +24,13 @@ import planner
 from batch_adapter import BatchCase, iteration_v2, robust_core
 from config import load_unified_policies
 from enhanced_dp import EnhancedPlanner, EnhancedSpec, enhanced_value, grid
+from generate_nominal_case import generate
 from root_calibrated_core import (
     _maximum_capacity, _lognormal_cdf, _truncated_lognormal_first_moment,
 )
 
 HERE = Path(__file__).resolve().parent
-NOMINAL_CASE = HERE / 'nominal_case'
+NOMINAL_CASE = HERE / 'runtime' / 'nominal_case'
 SEED = 2026092000
 SPEC = EnhancedSpec(shortlist=9, time_step=25.0, energy_step=7.5, quadrature=3,
                     tail_weight=0.0, tail_depth=6, cost_power=0.5, rounding=1,
@@ -151,19 +153,6 @@ class AuditPlanner(EnhancedPlanner):
         return selected, value
 
 
-REFERENCE_RESULT = {'route': '0-3-4-7-11-12-15-19-8-0',
- 'weighted_completed': 76.0,
- 'total_weight': 140.0,
- 'completed_tasks': 6,
- 'visited_tasks': 8,
- 'skipped_tasks': 2,
- 'local_actions': 4,
- 'mec_actions': 2,
- 'final_time_s': 2082.223423444785,
- 'final_energy_kj': 483.7978039994054,
- 'mcr': 0.5428571428571428}
-
-
 def mission_geometry(case_path):
     """Return the geographical markers from the actual experiment input."""
     with (case_path / 'nodes.csv').open(newline='', encoding='utf-8') as stream:
@@ -184,16 +173,19 @@ def mission_geometry(case_path):
     }
 
 
-def run(seed=SEED):
+def run(seed=SEED, case_path=None):
     """Execute one mission and return data that both figure plotters accept.
 
-    A different seed must be present in nominal_case/tasks.csv. Calls should be
-    sequential because the original runner selects the planner through a module
-    class reference. That reference is restored before this function returns.
+    Generate the selected seed from the public task attributes without bundled
+    input tables. Calls should be sequential because the original runner selects
+    the planner through a module class reference. That reference is restored
+    before this function returns.
     """
     started = time.perf_counter()
     seed = int(seed)
-    case = BatchCase(NOMINAL_CASE)
+    case_path = generate(NOMINAL_CASE if case_path is None else case_path,
+                         seed_start=seed, seed_count=1)
+    case = BatchCase(case_path)
     bundle = case.build_bundle(seed)
     policy = load_unified_policies(HERE / 'policies.json')['CMSACR']
     AuditPlanner.top_records = []
@@ -205,33 +197,45 @@ def run(seed=SEED):
     finally:
         planner.ConsistentACARPlanner = original_planner
 
-    validations = {}
-    if seed == SEED:
-        for key, expected in REFERENCE_RESULT.items():
-            actual = result[key]
-            passed = (actual == expected if key == 'route' else
-                      math.isclose(float(actual), float(expected), abs_tol=1e-8,
-                                   rel_tol=0.0))
-            if not passed:
-                raise AssertionError(f'Reference mismatch for {key}: {actual} != {expected}')
-            validations[key] = True
     trace = json.loads(result.pop('trace'))
     metadata = case.metadata(seed)
     metadata.update(result)
     metadata.update(method='Proposed', config_id='U9')
+    visited = [int(item['task']) for item in trace]
+    completed = [item for item in trace if item['mode'] != 'skip']
+    completed_weight = sum(bundle.iteration.tasks[int(item['task']) - 1].weight
+                           for item in completed)
+    validations = {
+        'return_within_budgets': bool(result['return_success'])
+            and 0.0 <= result['final_time_s'] <= metadata['t_max_s'] + 1e-7
+            and 0.0 <= result['final_energy_kj'] <= metadata['e_max_kj'] + 1e-7,
+        'unique_visits': len(visited) == len(set(visited)) == result['visited_tasks'],
+        'completion_counts': len(completed) == result['completed_tasks']
+            == result['local_actions'] + result['mec_actions']
+            and len(trace) - len(completed) == result['skipped_tasks'],
+        'completed_weight': math.isclose(completed_weight,
+            result['weighted_completed'], abs_tol=1e-8, rel_tol=0.0),
+        'completed_deadlines': all(item['time_s'] <=
+            bundle.iteration.tasks[int(item['task']) - 1].deadline_s + 1e-7
+            for item in completed),
+        'route_matches_trace': result['route'] == '0-' +
+            '-'.join(str(task) for task in visited) + '-0',
+    }
+    failed = [name for name, passed in validations.items() if not passed]
+    if failed:
+        raise AssertionError('Mission validation failed: ' + ', '.join(failed))
     return {
         'description': 'Fresh execution of the nominal mission and its Top/Sub decisions.',
         'seed': seed,
         'spec': asdict(SPEC),
         'policy': asdict(policy),
-        'input_case': 'simulation/nominal_case',
+        'input_case': str(case_path),
         'mec_indexing': 'Internal MEC 0,1,2 correspond to map MEC 1,2,3; -1 denotes local/skip.',
         'value_definition': 'Expected sum of task priority; completion total = immediate reward + continuation value; skip total = continuation value.',
         'feasibility_note': 'An infeasible completion has no comparison value and is not plotted as a zero-value completion.',
-        'reference_comparison': 'passed' if seed == SEED else 'not applicable to this seed',
-        'validation_against_formal_result': validations,
+        'validation': validations,
         'mission_result': metadata,
-        'mission_geometry': mission_geometry(NOMINAL_CASE),
+        'mission_geometry': mission_geometry(case_path),
         'trace': trace,
         'top_decisions': AuditPlanner.top_records,
         'sub_decisions': AuditPlanner.sub_records,

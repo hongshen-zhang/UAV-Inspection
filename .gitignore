@@ -1,0 +1,22 @@
+# This repository publishes source code only. Experiments generate data locally.
+.venv/
+__pycache__/
+*.py[cod]
+*.nbc
+*.nbi
+.DS_Store
+*.npz
+*.npy
+*.csv
+*.json
+*.jsonl
+*.gz
+*.pdf
+*.png
+*.svg
+*.zip
+data/
+nominal_case/
+runtime/
+reproduced/
+experiments_460kJ/

@@ -207,7 +207,14 @@ def policy_from_mapping(config_id: str, values: Mapping[str, Any]) -> PolicySpec
 
 
 def load_payload(path: str | Path) -> dict[str, Any]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    path = Path(path)
+    if path == Path(__file__).resolve().with_name('policies.json') and not path.exists():
+        # Policy parameters are source constants; no bundled JSON is required.
+        from policy_defaults import DEFAULT_POLICY
+        import copy
+        payload = copy.deepcopy(DEFAULT_POLICY)
+    else:
+        payload = json.loads(path.read_text(encoding="utf-8"))
     if int(payload.get("schema_version", 0)) != 1:
         raise ValueError("unsupported consistent ACAR configuration schema")
     required = {

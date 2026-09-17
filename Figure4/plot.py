@@ -1,14 +1,13 @@
-"""Redraw Figure 4 from the recorded nominal mission (seed 2026092000).
+"""Draw Figure 4 from a fresh local mission (default seed 2026092000).
 
 The embedded vector map is a pre-authored background, without the route or
-result box. The editable route and recorded experiment values are rendered
-on top of this asset. By default it uses archived values; --input loads fresh
-results produced by experiment.py. This plotter does not run the algorithm.
+result box. The editable route and experiment values are rendered on top of
+this asset. This plotter reads data/replay.json and does not run the algorithm.
 
 Requires: pip install pdfplumber reportlab pypdf
-Run: python plot.py
-Fresh data: python experiment.py --output-dir results
-           python plot.py --input results/replay.json --output results/figure4.pdf
+Run: python experiment.py
+     python plot.py
+Custom data: python plot.py --input /path/to/replay.json --output /path/to/figure4.pdf
 Output: figure4.pdf next to this script.
 """
 from pathlib import Path
@@ -28,7 +27,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, NameObject
 
-OUTPUT = Path(__file__).resolve().with_name('figure4.pdf')
+HERE = Path(__file__).resolve().parent
+OUTPUT = HERE / 'figure4.pdf'
 
 # Map data: (c) OpenStreetMap contributors, Open Database License (ODbL) 1.0.
 # https://www.openstreetmap.org/copyright
@@ -62,51 +62,6 @@ MISSION = {'base': {'name': 'Base', 'lon': 113.546, 'lat': 22.21},
            {'idx': 19, 'lon': 113.5912, 'lat': 22.1448},
            {'idx': 20, 'lon': 113.5943, 'lat': 22.1212}]}
 
-# First formal nominal seed, selected independently of its performance.
-RECORDED_RESULT = {'suite': 'formal_n20',
- 'case_id': 'nominal',
- 'seed': '2026092000',
- 'mission_fingerprint': '79696750faa0a96bdd3e8c69e36015310513b38b1597a3332ae02bddb94c4f5e',
- 'axis': 'formal sensitivity condition',
- 'axis_value': '{"condition":"nominal","mec_scale":1.0,"sigma_scale":1.0,"workload_scale":1.0}',
- 't_max_s': '2200.0',
- 'e_max_kj': '620.0',
- 'n_tasks': '20',
- 'n_mec': '3',
- 'geometry_profile': 'figure4_macau_mission_json',
- 'path_loss_L_profile': '',
- 'communication_profile': '',
- 'local_mec_balance': '',
- 'uncertainty_scale': '1.0',
- 'load_scale': '1.0',
- 'deadline_scale_factor': '1.4',
- 'lookahead_depth_L': '0',
- 'method_key': 'cmsacr',
- 'method': 'Proposed',
- 'mcr': '0.5428571428571428',
- 'safe_mcr': '0.5428571428571428',
- 'weighted_completed': '76.0',
- 'total_weight': '140.0',
- 'completed_tasks': '6',
- 'visited_tasks': '8',
- 'skipped_tasks': '2',
- 'local_actions': '4',
- 'mec_actions': '2',
- 'final_time_s': '2082.223423444785',
- 'final_energy_kj': '483.7978039994054',
- 'return_success': '1',
- 'max_constraint_residual': '0.0',
- 'runtime_ms': '1863.9221250050468',
- 'planner_runtime_ms': '1863.8740840542596',
- 'route': '0-3-4-7-11-12-15-19-8-0',
- 'continuation_signature': '0c4f78519f75689a',
- 'route_arrival_signature_match': '1',
- 'guidance_rule': 'blended',
- 'guidance_weight': '0.5',
- 'cache_expected_stats': '1',
- 'planner_stats': '{"action_value_calls":14,"anchor_calls":0,"anchor_replaced":0,"anchor_retained":0,"arrival_calls":8,"continuation_cache_hits":8,"continuation_calls":14,"continuation_expansions":1109680,"dual_price_cache_hits":0,"dual_price_calls":8,"route_calls":9}',
- 'trace': '',
- 'config_id': 'U9'}
 
 def serif_fonts():
     """Use local Times New Roman fonts when present, otherwise PDF Times."""
@@ -126,20 +81,19 @@ def serif_fonts():
     return 'Times-Roman', 'Times-Bold'
 
 
-def main(payload=None, output=OUTPUT):
+def main(payload, output=OUTPUT):
     map_pdf = zlib.decompress(base64.b64decode(_MAP_ASSET))
     regular_font, bold_font = serif_fonts()
-    row = RECORDED_RESULT if payload is None else payload['mission_result']
-    mission = MISSION if payload is None else payload['mission_geometry']
-    if payload is not None:
-        # The pre-authored background is valid for this published layout.
-        if len(mission['tasks']) != len(MISSION['tasks']):
+    row = payload['mission_result']
+    mission = payload['mission_geometry']
+    # The pre-authored background is valid for this published layout.
+    if len(mission['tasks']) != len(MISSION['tasks']):
+        raise ValueError('Replay geometry does not match the embedded map.')
+    expected = {int(item['idx']): item for item in MISSION['tasks']}
+    for task in mission['tasks']:
+        original = expected[int(task['idx'])]
+        if not all(math.isclose(float(task[key]), original[key], abs_tol=1e-10, rel_tol=0.0) for key in ('lon', 'lat')):
             raise ValueError('Replay geometry does not match the embedded map.')
-        expected = {int(item['idx']): item for item in MISSION['tasks']}
-        for task in mission['tasks']:
-            original = expected[int(task['idx'])]
-            if not all(math.isclose(float(task[key]), original[key], abs_tol=1e-10, rel_tol=0.0) for key in ('lon', 'lat')):
-                raise ValueError('Replay geometry does not match the embedded map.')
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     route = [int(n) for n in row['route'].split('-')]
@@ -290,7 +244,7 @@ def main(payload=None, output=OUTPUT):
     open_arrow(*p, theta, 7.4, navy, 2.4)
 
     # Tasks reached by the UAV but skipped after workload revelation.
-    skipped_nodes = ({8, 19} if payload is None else
+    skipped_nodes = ({int(e['task']) for e in json.loads(row['trace']) if e['mode']=='skip'} if payload is None else
                      {int(event['task']) for event in payload['trace']
                       if event['mode'] == 'skip'})
     skip_color = HexColor('#6B7280')
@@ -318,7 +272,7 @@ def main(payload=None, output=OUTPUT):
     left_x = rx + 8
     lines = [
         f'Weight: {float(row["weighted_completed"]):g} / {float(row["total_weight"]):g}',
-        f'Tasks: {completed} / {int(row["n_tasks"])}',
+        f'Tasks: {completed} / {len(mission["tasks"])}',
         f'Visited: {visited}; skipped: {skipped}',
         f'Time: {float(row["final_time_s"]):.1f} / {float(row["t_max_s"]):.0f} s',
         f'Energy: {float(row["final_energy_kj"]):.1f} / {float(row["e_max_kj"]):.0f} kJ',
@@ -37809,8 +37763,13 @@ _MAP_ASSET = (
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--input', type=Path, help='replay.json produced by experiment.py')
+    parser.add_argument('--input', type=Path, default=HERE / 'data' / 'replay.json',
+                        help='replay.json produced by experiment.py')
     parser.add_argument('--output', type=Path, default=OUTPUT)
     args = parser.parse_args()
-    payload = json.loads(args.input.read_text(encoding='utf-8')) if args.input else None
+    if not args.input.is_file():
+        parser.error(f'No experiment result at {args.input}. From the repository root, '
+                     'run: python Figure4/experiment.py && python Figure4/plot.py. '
+                     'For custom outputs, pass --input /path/to/replay.json.')
+    payload = json.loads(args.input.read_text(encoding='utf-8'))
     main(payload, args.output)

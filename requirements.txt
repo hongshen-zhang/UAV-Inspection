@@ -1,9 +1,9 @@
 # Tested with Python 3.12.
-numpy==2.5.3
+numpy==2.5.2
 pandas==3.0.5
 scipy==1.18.1
 numba==0.67.0
-matplotlib==3.11.2
+matplotlib==3.11.1
 reportlab==5.0.1
 pypdf==6.19.0
 pdfplumber==0.11.10

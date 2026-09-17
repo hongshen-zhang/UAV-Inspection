@@ -56,8 +56,9 @@ def make_case(destination, kind, value, seeds):
                        physics_updates=updates, seeds=seeds)
     rows = read_rows(folder / "tasks.csv")
     if kind == "uncertainty" and value != 1.0:
-        base_z = {(int(r["seed"]), int(r["task_id"])): float(r["base_normal_z"])
-                  for r in read_rows(HERE / "base_normal_z.csv")}
+        base_z = {(int(r["seed"]), int(r["task_id"])):
+                  (math.log(float(r['workload_gcy'])) - float(r['mu'])) / float(r['sigma'])
+                  for r in rows}
         for row in rows:
             sigma = float(row["sigma"]) * float(value)
             mean = float(row["mean_workload_gcy"])

@@ -59,6 +59,9 @@ def copy_case(destination, case_id=None, physics_updates=None, seeds=None):
     """
     destination = Path(destination)
     destination.mkdir(parents=True, exist_ok=True)
+    if not (NOMINAL_CASE / 'tasks.csv').exists():
+        from generate_nominal_case import generate
+        generate(NOMINAL_CASE)
     payload = json.loads((NOMINAL_CASE / "config.json").read_text())
     case_id = str(case_id or payload["case_id"])
     payload["case_id"] = case_id

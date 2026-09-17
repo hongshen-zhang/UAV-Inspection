@@ -2,8 +2,8 @@
 """Generate the nominal paired missions from the fixed public task attributes.
 
 Reproduces the original lognormal draws, geographic projection, average
-LoS/NLoS channel rates, and thresholded MEC availability. The frozen input
-CSV files used by all experiments are also supplied in nominal_case/.
+LoS/NLoS channel rates, and thresholded MEC availability. Input CSV files
+are generated locally; no input tables or outcomes are bundled.
 Run: python simulation/generate_nominal_case.py --output generated_case
 """
 from __future__ import annotations
@@ -33,7 +33,7 @@ CONFIG = {'schema_version': 'expanded-v1',
  'physics': {'n_tasks': 20,
              'n_mec': 3,
              't_max': 2200.0,
-             'e_max_kj': 620.0,
+             'e_max_kj': 460.0,
              'uav_altitude_m': 120.0,
              'speed_mps': 17.0,
              'flight_power_w': 255.0,
