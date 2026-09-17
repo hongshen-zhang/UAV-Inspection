@@ -19,6 +19,8 @@ from matplotlib import font_manager
 from matplotlib.colors import to_rgb
 from matplotlib.patches import Patch
 
+from .inputs import ABLATION_SETTINGS, ABLATION_VARIANTS
+
 METHODS = ("Proposed", "Weight Greedy", "Mean-workload Greedy", "Mean-workload DP",
            "Distribution-aware Myopic", "Nearest Neighbor", "IO", "Rollout", "ADAPT")
 COLORS = dict(zip(METHODS, ("#EE2922", "#4F7CC7", "#F68C28", "#8673B5", "#4A7937",
@@ -27,10 +29,10 @@ MARKERS = dict(zip(METHODS, ("o", "^", "D", "s", "P", "v", ">", "h", "X")))
 LABELS = {"IO": "IO [11]", "Rollout": "Rollout [30]", "ADAPT": "ADAPT [13]"}
 ALIASES = {"Priority Greedy": "Weight Greedy", "Shiri-IO": "IO",
            "Novoa-Rollout": "Rollout", "ADAPT-IACS": "ADAPT"}
-VARIANTS = ("proposed", "mean_workload_dp", "no_priority", "top_myopic", "no_proactive_skip")
+VARIANTS = tuple(ABLATION_VARIANTS)
 VARIANT_LABELS = ("Proposed", "Mean workload\nDP", "No priority\nfactor",
                   "Myopic\nTop", "No proactive\nskip")
-SETTINGS = ("default", "larger_time", "lower_energy")
+SETTINGS = tuple(name for name, _, _ in ABLATION_SETTINGS)
 BOOTSTRAPS = 20000
 BOOTSTRAP_SEED = 2026091510
 FONT = "Times New Roman" if any(f.name == "Times New Roman" for f in font_manager.fontManager.ttflist) else "DejaVu Serif"
@@ -241,10 +243,25 @@ def sweep(frame, study):
 
 
 def ablation(frame):
-    require_columns(frame, ("setting", "variant_id"), "Ablation results")
+    require_columns(frame, ("setting", "variant_id", "method", "point", "t_max_s", "e_max_kj"),
+                    "Ablation results")
     unknown = set(frame.setting)-set(SETTINGS)
-    if unknown or set(frame.variant_id)-set(VARIANTS):
-        raise ValueError("Unknown ablation setting or variant")
+    if unknown:
+        raise ValueError(f"Unsupported Figure 7 settings: {sorted(map(str, unknown))}. "
+                         "The current paper uses lower_time (1800 s), not larger_time (2600 s). "
+                         "Rerun Figure7/experiment.py in a new --output-dir.")
+    if set(frame.variant_id)-set(VARIANTS):
+        raise ValueError("Unknown Figure 7 ablation variant")
+    if not frame.method.eq(frame.variant_id.map(ABLATION_VARIANTS)).all():
+        raise ValueError("Figure 7 method and variant_id do not match")
+    for point, (setting, time_budget, energy_budget) in enumerate(ABLATION_SETTINGS):
+        selected = frame[frame.setting.eq(setting)]
+        for column, expected in (("point", point), ("t_max_s", time_budget),
+                                 ("e_max_kj", energy_budget)):
+            values = pd.to_numeric(selected[column], errors="coerce").to_numpy()
+            if not np.isfinite(values).all() or not np.allclose(values, expected, rtol=0, atol=1e-9):
+                raise ValueError(f"Figure 7 {setting} requires {column}={expected:g}; "
+                                 "use newly simulated results rather than relabeling old data.")
     summary, variants = summarize(frame, key="setting", series="variant_id")
     settings = [s for s in SETTINGS if s in set(frame.setting)]
     fig, ax = plt.subplots(figsize=(9.6, 4.95))
@@ -270,9 +287,9 @@ def ablation(frame):
     ax.set_xticks(x, [labels[v] for v in variants])
     ax.tick_params(axis="x", length=0, pad=10, labelsize=14)
     style(ax)
-    texts = {"default":"Default\nT = 2200 s, E = 460 kJ",
-             "larger_time":"Larger T\nT = 2600 s, E = 460 kJ",
-             "lower_energy":"Lower E\nT = 2200 s, E = 380 kJ"}
+    setting_labels = {"default":"Default", "lower_time":"Lower T", "lower_energy":"Lower E"}
+    texts = {name: f"{setting_labels[name]}\nT = {t:g} s, E = {e:g} kJ"
+             for name, t, e in ABLATION_SETTINGS}
     fig.legend(handles=[Patch(facecolor="#BBBBBB", edgecolor="#686868", hatch=hatches[s], label=texts[s]) for s in settings],
                loc="upper center", ncol=len(settings), frameon=False, fontsize=12.5, bbox_to_anchor=(.535,1.))
     return fig

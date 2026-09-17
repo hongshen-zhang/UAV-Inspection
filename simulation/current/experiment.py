@@ -19,14 +19,13 @@ for _name in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'NUMBA_NUM_THREADS'):
 
 import numpy as np
 
-from .inputs import build_case, generate_workload, study_points, case_seeds
+from .inputs import (ABLATION_VARIANTS, build_case, generate_workload,
+                     study_config, study_points, case_seeds)
 
 METHODS = ('Proposed', 'Weight Greedy', 'Mean-workload Greedy',
            'Mean-workload DP', 'Distribution-aware Myopic', 'Nearest Neighbor',
            'IO', 'Rollout', 'ADAPT')
-ABLATIONS = {'Proposed': 'proposed', 'Mean-workload DP': 'mean_workload_dp',
-             'No priority factor': 'no_priority', 'Myopic Top': 'top_myopic',
-             'No proactive skip': 'no_proactive_skip'}
+ABLATIONS = {method: variant for variant, method in ABLATION_VARIANTS.items()}
 NUMERICAL = {'Default': ('default', {}),
              'DP bins G=1': ('dp_g1', {'quadrature': 1}),
              'DP bins G=5': ('dp_g5', {'quadrature': 5}),
@@ -86,10 +85,9 @@ def execute(job):
                group_id=int(point) if study == 'Table4' else '',
                priority_config=int(point) if study == 'Table4' else '',
                t_max_s=float(public['pars'][0]), e_max_kj=float(public['pars'][1]))
-    if study == 'Figure7':
-        row['setting'] = ('default', 'larger_time', 'lower_energy')[int(point)]
-    elif study == 'ExecutionAblation':
-        row['setting'] = ('default', 'lower_energy', 'larger_time')[int(point)]
+    if study in ('Figure7', 'ExecutionAblation'):
+        row['setting'] = study_config(study)['settings'][int(point)][0]
+    if study == 'ExecutionAblation':
         row['variant_id'] = 'proposed' if method == 'Proposed' else 'normalized'
     return row
 
@@ -148,7 +146,10 @@ def measure_timing(args, output, methods, points):
 
 def main(study, folder):
     folder = Path(folder)
-    parser = argparse.ArgumentParser(description=__doc__)
+    settings = study_config(study).get('settings', ())
+    setting_help = '; '.join(f'--point {i}: {name} (T={t:g} s, E={e:g} kJ)'
+                             for i, (name, t, e) in enumerate(settings))
+    parser = argparse.ArgumentParser(description=__doc__, epilog=setting_help or None)
     parser.add_argument('--method', action='append', choices=methods_for(study),
                         help='Repeat to select methods; default: all methods for this study.')
     parser.add_argument('--point', type=float, action='append',
@@ -205,6 +206,8 @@ def main(study, folder):
     remaining = [job for job in jobs if job not in completed]
     metadata.write_text(json.dumps(dict(study=study, source_sha256=identity,
         methods=methods, points=points, requested_missions=len(jobs),
+        settings=[dict(point=i, setting=name, t_max_s=t, e_max_kj=e)
+                  for i, (name, t, e) in enumerate(settings)],
         default_time_s=2200, default_energy_kj=460), indent=2) + '\n')
     if not remaining:
         print(f'All {len(jobs)} requested missions already exist in {target}')

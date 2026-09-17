@@ -50,12 +50,15 @@ ABLATION_VARIANTS = {
 }
 ABLATION_SETTINGS = (
     ('default', 2200.0, 460.0),
-    ('larger_time', 2600.0, 460.0),
+    ('lower_time', 1800.0, 460.0),
     ('lower_energy', 2200.0, 380.0),
 )
-# The execution study's original case order differs from Figure7's.
-EXECUTION_SETTINGS = (ABLATION_SETTINGS[0], ABLATION_SETTINGS[2],
-                      ABLATION_SETTINGS[1])
+# The separate execution study retains its original budgets and case order.
+EXECUTION_SETTINGS = (
+    ('default', 2200.0, 460.0),
+    ('lower_energy', 2200.0, 380.0),
+    ('larger_time', 2600.0, 460.0),
+)
 NUMERICAL_VARIANTS = {
     'default': ('Default', {}),
     'dp_g1': ('DP bins G=1', {'quadrature': 1}),
