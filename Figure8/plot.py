@@ -4,6 +4,7 @@
 from pathlib import Path
 import csv
 import io
+import argparse
 
 import numpy as np
 import matplotlib
@@ -148,7 +149,7 @@ def draw(wcr, timing):
             series_metadata.append(dict(metric=metric, method=method, L=list(CAPS),
                                         y=mean[:, m].tolist(), lower=lower[:, m].tolist(),
                                         upper=upper[:, m].tolist()))
-        ax.set_xlim(0.6, 11.4)
+        ax.set_xlim(min(CAPS) - 0.4, max(CAPS) + 0.4)
         ax.set_xticks(CAPS)
         ax.set_xlabel("Candidate cap $L$", labelpad=5)
         ax.grid(True, color="#ECECEC", linewidth=0.65)
@@ -158,9 +159,10 @@ def draw(wcr, timing):
             ax.spines[side].set_linewidth(0.85)
             ax.spines[side].set_color("black")
         ax.tick_params(direction="out", length=3.8, width=0.8, pad=4)
-    axes[0].set_ylim(30, 48)
-    axes[0].set_yticks([30, 35, 40, 45])
-    require(wcr[1].min() > 30 and wcr[2].max() < 48, "WCR bars outside the axes")
+    wcr_min = min(30, 5 * np.floor(wcr[1].min() / 5))
+    wcr_max = 48 if wcr[2].max() < 48 else 5 * np.ceil(wcr[2].max() / 5) + 1
+    axes[0].set_ylim(wcr_min, wcr_max)
+    axes[0].set_yticks(np.arange(wcr_min, wcr_max, 5))
     axes[0].set_ylabel("WCR (%)", labelpad=5)
     axes[0].set_title("(a) Completion performance", fontsize=14, pad=26)
     axes[1].set_yscale("log")
@@ -195,9 +197,82 @@ def read_summary(text, fields):
                            for cap in CAPS]) for field in fields)
 
 
+def raw_performance(path):
+    global CAPS
+    with path.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    indexed = {}
+    for row in rows:
+        if row["method"] not in METHODS:
+            continue
+        key = (int(row["seed"]), int(row["L"]), row["method"])
+        require(key not in indexed, "Duplicated performance mission")
+        indexed[key] = 100 * float(row["wcr"] if "wcr" in row else row["safe_mcr"])
+    seeds = sorted({key[0] for key in indexed})
+    CAPS = tuple(sorted({key[1] for key in indexed}))
+    require(seeds and len(indexed) == len(seeds) * len(CAPS) * 2,
+            "Both methods need paired seeds at every candidate cap")
+    values = np.array([[[indexed[seed, cap, method] for method in METHODS]
+                        for cap in CAPS] for seed in seeds])
+    rng = np.random.default_rng(2026091510)
+    draws = np.empty((20000, len(CAPS), 2))
+    for first in range(0, 20000, 100):
+        indices = rng.integers(0, len(seeds), size=(100, len(seeds)))
+        draws[first:first + 100] = values[indices].mean(axis=1)
+    lower, upper = np.quantile(draws, [0.025, 0.975], axis=0)
+    return values.mean(axis=0), lower, upper
+
+
+def raw_timing(path):
+    with path.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    indexed = {}
+    for row in rows:
+        if row["method"] not in METHODS:
+            continue
+        key = (int(row["seed"]), int(row["L"]), row["method"])
+        require(key not in indexed, "Duplicated timing mission")
+        indexed[key] = row
+    seeds = sorted({key[0] for key in indexed})
+    require(seeds and len(indexed) == len(seeds) * len(CAPS) * 2 and
+            {key[1] for key in indexed} == set(CAPS),
+            "Timing needs both methods at the same candidate caps as performance")
+    totals, counts = [np.array([[[float(indexed[seed, cap, method][field]) for method in METHODS]
+                                 for cap in CAPS] for seed in seeds])
+                       for field in ("task_decision_total_ms", "task_decision_count")]
+    require(np.all(totals > 0) and np.all(counts > 0), "Timing values must be positive")
+    # Bootstrap whole missions; pool decisions rather than averaging mission means.
+    mean = totals.sum(axis=0) / counts.sum(axis=0)
+    rng = np.random.default_rng(2026091528)
+    draws = np.empty((20000, len(CAPS), 2))
+    for first in range(0, 20000, 200):
+        indices = rng.integers(0, len(seeds), size=(200, len(seeds)))
+        draws[first:first + 200] = totals[indices].sum(axis=1) / counts[indices].sum(axis=1)
+    lower, upper = np.quantile(draws, [0.025, 0.975], axis=0)
+    return mean, lower, upper
+
+
 def main():
-    wcr = read_summary(WCR_CSV, ("mean_wcr_percent", "lower_95_wcr_percent", "upper_95_wcr_percent"))
-    timing = read_summary(TIMING_CSV, ("mean_decision_ms", "lower_95_mean_ms", "upper_95_mean_ms"))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--results", type=Path, help="New results.csv from experiment.py.")
+    parser.add_argument("--timing", type=Path, help="New timing.csv; supply together with --results.")
+    parser.add_argument("--archived", action="store_true", help="Ignore local experiment outputs and redraw archived results.")
+    args = parser.parse_args()
+    if args.archived and (args.results or args.timing):
+        parser.error("Choose --archived or new input files, not both.")
+    if not args.archived:
+        if args.results is None and OUTPUT.with_name("results.csv").exists():
+            args.results = OUTPUT.with_name("results.csv")
+        if args.timing is None and OUTPUT.with_name("timing.csv").exists():
+            args.timing = OUTPUT.with_name("timing.csv")
+    if bool(args.results) != bool(args.timing):
+        parser.error("Both performance and timing outputs are required. Run experiment.py --phase both, supply --results and --timing, or use --archived.")
+    if args.results:
+        wcr = raw_performance(args.results)
+        timing = raw_timing(args.timing)
+    else:
+        wcr = read_summary(WCR_CSV, ("mean_wcr_percent", "lower_95_wcr_percent", "upper_95_wcr_percent"))
+        timing = read_summary(TIMING_CSV, ("mean_decision_ms", "lower_95_mean_ms", "upper_95_mean_ms"))
     draw(wcr, timing)
 
 

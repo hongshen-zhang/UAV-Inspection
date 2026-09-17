@@ -4,6 +4,7 @@
 from pathlib import Path
 import csv
 import io
+import argparse
 
 import numpy as np
 import matplotlib
@@ -138,7 +139,7 @@ def draw_reference_style(figure: int, settings: dict, output: Path, mean, lower,
     colors = COLORS
     require(set(METHODS) <= set(colors), "The reference palette lacks a required method.")
     x = np.asarray(settings["budgets"], dtype=float)
-    require(len(np.unique(x)) > 10, "Every curve must retain all measured budget points.")
+    require(len(np.unique(x)) == len(x), "Budget values must be unique.")
     mean, lower, upper = 100 * mean, 100 * lower, 100 * upper
     markers = {
         "Proposed": "o", "Weight Greedy": "^", "Mean-workload Greedy": "D",
@@ -169,11 +170,13 @@ def draw_reference_style(figure: int, settings: dict, output: Path, mean, lower,
                 f"Missing measured budget markers for {method}")
         handles[method] = line
         marker_counts[method] = len(x)
-    ax.set_xlim(x.min()-0.035*np.ptp(x), x.max()+0.035*np.ptp(x))
+    padding = 0.035 * (np.ptp(x) or max(abs(x[0]), 1))
+    ax.set_xlim(x.min() - padding, x.max() + padding)
     y_min = 10 if figure == 6 else 0
-    ax.set_ylim(y_min, 60)
-    require(lower.min() >= y_min and upper.max() < 60, "A confidence interval is outside the axes.")
-    ax.set_yticks(np.arange(y_min, 61, 10))
+    y_min = min(y_min, 10 * np.floor(lower.min() / 10))
+    y_max = max(60, 10 * np.ceil(upper.max() / 10))
+    ax.set_ylim(y_min, y_max)
+    ax.set_yticks(np.arange(y_min, y_max + 1, 10))
     ax.set_xticks(MAJOR_TICKS[figure], [f"{value:g}" for value in MAJOR_TICKS[figure]])
     ax.set_xlabel(settings["xlabel"], fontsize=15.5, labelpad=5)
     ax.set_ylabel("WCR (%)", fontsize=15.5, labelpad=5)
@@ -223,12 +226,56 @@ def draw_reference_style(figure: int, settings: dict, output: Path, mean, lower,
     return paths, colors, marker_counts
 
 
+def from_results(path):
+    with path.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    aliases = {"Priority Greedy": "Weight Greedy"}
+    indexed = {}
+    for row in rows:
+        method = aliases.get(row["method"], row["method"])
+        if method not in METHODS:
+            continue
+        key = (int(row["seed"]), float(row["budget"]), method)
+        require(key not in indexed, "Duplicated mission result")
+        indexed[key] = float(row["wcr"] if "wcr" in row else row["safe_mcr"])
+    budgets = sorted({key[1] for key in indexed})
+    seeds = sorted({key[0] for key in indexed})
+    require(len(indexed) == len(seeds) * len(budgets) * len(METHODS) and seeds,
+            "All six methods need the same seeds at every budget")
+    values = np.array([[[indexed[seed, budget, method] for method in METHODS]
+                        for budget in budgets] for seed in seeds])
+    rng = np.random.default_rng(2026091510)
+    draws = np.empty((20000, len(budgets), len(METHODS)))
+    for first in range(0, 20000, 100):
+        indices = rng.integers(0, len(seeds), size=(100, len(seeds)))
+        draws[first:first + 100] = values[indices].mean(axis=1)
+    lower, upper = np.percentile(draws, [2.5, 97.5], axis=0, method="linear")
+    SETTINGS["budgets"] = budgets
+    SETTINGS["plot_note"] = SETTINGS["plot_note"].replace("n = 300", f"n = {len(seeds)}")
+    if tuple(budgets) != tuple(sorted({float(row["budget_value"]) for row in csv.DictReader(io.StringIO(SUMMARY_CSV))})):
+        MAJOR_TICKS[FIGURE] = budgets
+    return values.mean(axis=0), lower, upper
+
+
 def main():
-    rows = list(csv.DictReader(io.StringIO(SUMMARY_CSV)))
-    lookup = {(float(row["budget_value"]), row["method"]): row for row in rows}
-    arrays = [np.array([[float(lookup[budget, method][field]) for method in METHODS]
-                        for budget in SETTINGS["budgets"]])
-              for field in ("mean_wcr", "lower_95", "upper_95")]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--results", type=Path, help="New results.csv; default: local results.csv if present, otherwise archived results.")
+    parser.add_argument("--archived", action="store_true", help="Ignore local experiment outputs and redraw archived results.")
+    args = parser.parse_args()
+    if args.archived and args.results:
+        parser.error("Choose --archived or --results, not both.")
+    if not args.archived and args.results is None:
+        local_results = OUTPUT.with_name("results.csv")
+        if local_results.exists():
+            args.results = local_results
+    if args.results:
+        arrays = from_results(args.results)
+    else:
+        rows = list(csv.DictReader(io.StringIO(SUMMARY_CSV)))
+        lookup = {(float(row["budget_value"]), row["method"]): row for row in rows}
+        arrays = [np.array([[float(lookup[budget, method][field]) for method in METHODS]
+                            for budget in SETTINGS["budgets"]])
+                  for field in ("mean_wcr", "lower_95", "upper_95")]
     configure_fonts()
     draw_reference_style(FIGURE, SETTINGS, OUTPUT.parent, *arrays, None)
 

@@ -4,6 +4,7 @@
 from pathlib import Path
 import csv
 import io
+import argparse
 
 import numpy as np
 import matplotlib
@@ -370,9 +371,34 @@ WCR_CSV = """seed,Proposed,Weight Greedy,Mean-workload Greedy,Mean-workload DP,D
 2026092299,0.42857142857142855,0.42857142857142855,0.36428571428571427,0.2571428571428571,0.2571428571428571,0.22857142857142856
 """
 
-rows = list(csv.DictReader(io.StringIO(WCR_CSV)))
-shared_seeds = [int(row["seed"]) for row in rows]
-series = {name: np.array([float(row[name]) for row in rows]) for name in SOURCE_NAMES}
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--results", type=Path, help="New results.csv from experiment.py; default: local results.csv if present, otherwise archived results.")
+parser.add_argument("--archived", action="store_true", help="Ignore local experiment outputs and redraw archived results.")
+args = parser.parse_args()
+if args.archived and args.results:
+    parser.error("Choose --archived or --results, not both.")
+if not args.archived and args.results is None:
+    local_results = OUTPUT.with_name("results.csv")
+    if local_results.exists():
+        args.results = local_results
+if args.results:
+    with args.results.open(newline="") as handle:
+        result_rows = list(csv.DictReader(handle))
+    grouped = {}
+    for display, source in SOURCE_NAMES.items():
+        selected = [row for row in result_rows if row["method"] in {display, source}]
+        lookup = {int(row["seed"]): float(row["wcr"] if "wcr" in row else row["safe_mcr"]) for row in selected}
+        require(len(lookup) == len(selected) and len(lookup) > 0,
+                f"{display}: missing or duplicated results")
+        grouped[display] = lookup
+    shared_seeds = sorted(grouped["Proposed"])
+    require(all(sorted(values) == shared_seeds for values in grouped.values()), "All six methods need paired seeds")
+    series = {name: np.array([values[seed] for seed in shared_seeds]) for name, values in grouped.items()}
+    SAMPLE_LABEL = f"Same workload distributions ({len(shared_seeds)} samples)"
+else:
+    rows = list(csv.DictReader(io.StringIO(WCR_CSV)))
+    shared_seeds = [int(row["seed"]) for row in rows]
+    series = {name: np.array([float(row[name]) for row in rows]) for name in SOURCE_NAMES}
 
 # Resample mission seeds jointly across methods to preserve their pairing.
 # Percentiles are taken over bootstrap means, not individual mission outcomes.

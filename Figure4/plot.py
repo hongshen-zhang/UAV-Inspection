@@ -2,15 +2,20 @@
 
 The embedded vector map is a pre-authored background, without the route or
 result box. The editable route and recorded experiment values are rendered
-on top of this asset; this script does not rerun the mission simulation.
+on top of this asset. By default it uses archived values; --input loads fresh
+results produced by experiment.py. This plotter does not run the algorithm.
 
 Requires: pip install pdfplumber reportlab pypdf
 Run: python plot.py
+Fresh data: python experiment.py --output-dir results
+           python plot.py --input results/replay.json --output results/figure4.pdf
 Output: figure4.pdf next to this script.
 """
 from pathlib import Path
 from io import BytesIO
+import argparse
 import base64
+import json
 import math
 import os
 import zlib
@@ -121,11 +126,22 @@ def serif_fonts():
     return 'Times-Roman', 'Times-Bold'
 
 
-def main():
+def main(payload=None, output=OUTPUT):
     map_pdf = zlib.decompress(base64.b64decode(_MAP_ASSET))
     regular_font, bold_font = serif_fonts()
-    row = RECORDED_RESULT
-    mission = MISSION
+    row = RECORDED_RESULT if payload is None else payload['mission_result']
+    mission = MISSION if payload is None else payload['mission_geometry']
+    if payload is not None:
+        # The pre-authored background is valid for this published layout.
+        if len(mission['tasks']) != len(MISSION['tasks']):
+            raise ValueError('Replay geometry does not match the embedded map.')
+        expected = {int(item['idx']): item for item in MISSION['tasks']}
+        for task in mission['tasks']:
+            original = expected[int(task['idx'])]
+            if not all(math.isclose(float(task[key]), original[key], abs_tol=1e-10, rel_tol=0.0) for key in ('lon', 'lat')):
+                raise ValueError('Replay geometry does not match the embedded map.')
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
     route = [int(n) for n in row['route'].split('-')]
     seed = int(row['seed'])
     wcr = float(row['weighted_completed']) / float(row['total_weight'])
@@ -274,7 +290,9 @@ def main():
     open_arrow(*p, theta, 7.4, navy, 2.4)
 
     # Tasks reached by the UAV but skipped after workload revelation.
-    skipped_nodes = {8, 19}
+    skipped_nodes = ({8, 19} if payload is None else
+                     {int(event['task']) for event in payload['trace']
+                      if event['mode'] == 'skip'})
     skip_color = HexColor('#6B7280')
     for task_id in skipped_nodes:
         x, y = xy(task_id)
@@ -332,7 +350,7 @@ def main():
     writer.pages[0].compress_content_streams()
     writer.add_metadata({'/Title':'Proposed UAV route in the Macau simulation scenario',
                          '/Subject':f'Formal nominal mission, seed {seed}; full round trip and observed outcome'})
-    with OUTPUT.open('wb') as f:
+    with output.open('wb') as f:
         writer.write(f)
 
 
@@ -37790,4 +37808,9 @@ _MAP_ASSET = (
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--input', type=Path, help='replay.json produced by experiment.py')
+    parser.add_argument('--output', type=Path, default=OUTPUT)
+    args = parser.parse_args()
+    payload = json.loads(args.input.read_text(encoding='utf-8')) if args.input else None
+    main(payload, args.output)

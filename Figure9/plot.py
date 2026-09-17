@@ -2,12 +2,17 @@
 """Redraw Figure 9 from the original, embedded result summaries.
 
 Requires Python 3, NumPy and Matplotlib. Run: python plot.py
+Uses results.csv when available; --archived selects the original saved results.
+Use --results PATH for another experiment run, or --output PATH for a new PDF.
 Writes figure9.pdf beside this script. No simulations or external data are used.
 The embedded values and confidence intervals are preserved from the source tables.
 """
 from __future__ import annotations
 
+import argparse
 import csv
+import sys
+sys.dont_write_bytecode = True
 from io import StringIO
 from pathlib import Path
 
@@ -17,6 +22,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
+NEW_RESULTS = False
 OUTPUT = Path(__file__).resolve().with_name("figure9.pdf")
 try:
     font_manager.findfont("Times New Roman", fallback_to_default=False)
@@ -212,7 +218,13 @@ def draw(wcr):
     ax.set_ylabel("WCR (%)", labelpad=5)
     ax.set_ylim(20, 80)
     ax.set_yticks(np.arange(20, 81, 10))
-    require(low.min() >= 20 and high.max() < 65, "Data encroaches on the internal annotations")
+    if NEW_RESULTS:
+        top = max(80, 10 * np.ceil((high.max() + 20) / 10))
+        bottom = min(20, 10 * np.floor(low.min() / 10))
+        ax.set_ylim(bottom, top)
+        ax.set_yticks(np.arange(bottom, top + 1, 10))
+    else:
+        require(low.min() >= 20 and high.max() < 65, "Data encroaches on the internal annotations")
     ax.grid(True, color="#ECECEC", linewidth=.65)
     ax.set_axisbelow(True)
     ax.spines[["top", "right"]].set_visible(False)
@@ -234,11 +246,32 @@ def draw(wcr):
     plt.close(fig)
 
 
+
 def main():
-    global POINTS
-    POINTS, wcr = load_summary(WCR_CSV, "point", "method", METHODS)
+    global OUTPUT, POINTS, MAJOR, NEW_RESULTS
+    parser = argparse.ArgumentParser(description=__doc__)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--archived", action="store_true", help="use the original embedded paper results")
+    source.add_argument("--results", type=Path, help="CSV emitted by experiment.py")
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    args = parser.parse_args()
+    OUTPUT = args.output.resolve()
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    result_path = args.results
+    if result_path is None and not args.archived:
+        candidate = Path(__file__).resolve().with_name("results.csv")
+        if candidate.is_file():
+            result_path = candidate
+    if result_path is not None:
+        NEW_RESULTS = True
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "simulation"))
+        from sensitivity_cases import result_matrices, share_matrices
+        POINTS, wcr, _, seeds = result_matrices(result_path, None, METHODS)
+        print(f"Drawing new experiment results: {len(seeds)} paired seeds per point")
+    else:
+        POINTS, wcr = load_summary(WCR_CSV, "point", "method", METHODS)
     draw(wcr)
-    print(OUTPUT.name)
+    print(OUTPUT)
 
 
 if __name__ == "__main__":

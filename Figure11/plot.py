@@ -2,12 +2,17 @@
 """Redraw Figure 11 from the original, embedded result summaries.
 
 Requires Python 3, NumPy and Matplotlib. Run: python plot.py
+Uses results.csv when available; --archived selects the original saved results.
+Use --results PATH for another experiment run, or --output PATH for a new PDF.
 Writes figure11.pdf beside this script. No simulations or external data are used.
 The embedded values and confidence intervals are preserved from the source tables.
 """
 from __future__ import annotations
 
+import argparse
 import csv
+import sys
+sys.dont_write_bytecode = True
 from io import StringIO
 from pathlib import Path
 
@@ -17,6 +22,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 
+NEW_RESULTS = False
 OUTPUT = Path(__file__).resolve().with_name("figure11.pdf")
 try:
     font_manager.findfont("Times New Roman", fallback_to_default=False)
@@ -261,7 +267,13 @@ def draw(wcr,shares):
         ax.tick_params(direction="out",length=3.8,width=.8,pad=4)
         ax.tick_params(axis="x",which="minor",length=2.1,width=.65)
     axes[0].set_ylim(20,80);axes[0].set_yticks(np.arange(20,81,10))
-    require(wcr[1].min()>=20 and wcr[2].max()<65,"WCR interval outside plot/legend space")
+    if NEW_RESULTS:
+        top = max(80, 10 * np.ceil((wcr[2].max() + 20) / 10))
+        bottom = min(20, 10 * np.floor(wcr[1].min() / 10))
+        axes[0].set_ylim(bottom, top)
+        axes[0].set_yticks(np.arange(bottom, top + 1, 10))
+    else:
+        require(wcr[1].min()>=20 and wcr[2].max()<65,"WCR interval outside plot/legend space")
     axes[0].set_ylabel("WCR (%)",labelpad=5)
     axes[0].set_title("(a) Completion performance",fontsize=14,pad=12)
     axes[1].set_ylim(-4,108);axes[1].set_yticks([0,25,50,75,100])
@@ -291,14 +303,36 @@ def draw(wcr,shares):
     plt.close(fig)
 
 
+
 def main():
-    global POINTS, MAJOR
-    POINTS, wcr = load_summary(WCR_CSV, "mec_cpu_ghz", "method", METHODS)
-    share_points, shares = load_summary(SHARES_CSV, "mec_cpu_ghz", "execution_mode", MODES, "share_percent")
-    require(share_points == POINTS, "MEC frequencies differ between panels")
+    global OUTPUT, POINTS, MAJOR, NEW_RESULTS
+    parser = argparse.ArgumentParser(description=__doc__)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--archived", action="store_true", help="use the original embedded paper results")
+    source.add_argument("--results", type=Path, help="CSV emitted by experiment.py")
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    args = parser.parse_args()
+    OUTPUT = args.output.resolve()
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    result_path = args.results
+    if result_path is None and not args.archived:
+        candidate = Path(__file__).resolve().with_name("results.csv")
+        if candidate.is_file():
+            result_path = candidate
+    if result_path is not None:
+        NEW_RESULTS = True
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "simulation"))
+        from sensitivity_cases import result_matrices, share_matrices
+        POINTS, wcr, lookup, seeds = result_matrices(result_path, None, METHODS)
+        shares = share_matrices(POINTS, lookup, seeds)
+        print(f"Drawing new experiment results: {len(seeds)} paired seeds per frequency")
+    else:
+        POINTS, wcr = load_summary(WCR_CSV, "mec_cpu_ghz", "method", METHODS)
+        share_points, shares = load_summary(SHARES_CSV, "mec_cpu_ghz", "execution_mode", MODES, "share_percent")
+        require(share_points == POINTS, "MEC frequencies differ between panels")
     MAJOR = POINTS
     draw(wcr, shares)
-    print(OUTPUT.name)
+    print(OUTPUT)
 
 
 if __name__ == "__main__":

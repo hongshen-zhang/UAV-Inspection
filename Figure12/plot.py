@@ -2,12 +2,17 @@
 """Redraw Figure 12 from the original, embedded result summaries.
 
 Requires Python 3, NumPy and Matplotlib. Run: python plot.py
+Uses results.csv when available; --archived selects the original saved results.
+Use --results PATH for another experiment run, or --output PATH for a new PDF.
 Writes figure12.pdf beside this script. No simulations or external data are used.
 The embedded values and confidence intervals are preserved from the source tables.
 """
 from __future__ import annotations
 
+import argparse
 import csv
+import sys
+sys.dont_write_bytecode = True
 from io import StringIO
 from pathlib import Path
 
@@ -69,13 +74,16 @@ def plot(stats):
     fig,ax=plt.subplots(figsize=(9.6,4.95))
     fig.subplots_adjust(left=.075,right=.99,bottom=.18,top=.79)
     x=np.arange(5)*1.08
-    for j,(s,hatch,shade) in enumerate(zip(SETTINGS,['','///','\\\\\\'],[1,.68,.45])):
+    hatches = {'default': '', 'larger_time': '///', 'lower_energy': '\\\\\\'}
+    shades = {'default': 1, 'larger_time': .68, 'lower_energy': .45}
+    for j,s in enumerate(SETTINGS):
+        hatch, shade = hatches[s], shades[s]
         records=[stats[s,v] for v in VARIANTS]
         means=np.array([r['mean_wcr_percent'] for r in records])
         lo=np.array([r['lower_95_percent'] for r in records]);hi=np.array([r['upper_95_percent'] for r in records])
         colors=[tuple(shade*c+(1-shade) for c in to_rgb(color))
                 for color in ['#EE2922','#8673B5','#4F7CC7','#4F7CC7','#4F7CC7']]
-        pos=x+(j-1)*.235
+        pos=x+(j-(len(SETTINGS)-1)/2)*.235
         ax.bar(pos,means,width=.21,color=colors,edgecolor='#686868' if hatch else 'none',
                linewidth=.5,hatch=hatch,zorder=3)
         ax.errorbar(pos,means,yerr=np.vstack((means-lo,hi-means)),fmt='none',
@@ -89,9 +97,13 @@ def plot(stats):
     ax.tick_params(axis='y',labelsize=15)
     ax.grid(axis='y',color='#ECECEC',linewidth=.65);ax.set_axisbelow(True)
     ax.spines[['top','right']].set_visible(False)
-    legend_labels=['Default\nT = 2200 s, E = 620 kJ','Larger T\nT = 2600 s, E = 620 kJ','Lower E\nT = 2200 s, E = 380 kJ']
-    handles=[Patch(facecolor=c,edgecolor='#686868',hatch=h,label=l)
-             for c,h,l in zip(['#999999','#BBBBBB','#DDDDDD'],['','///','\\\\\\'],legend_labels)]
+    legend_labels = {
+        'default': 'Default\nT = 2200 s, E = 620 kJ',
+        'larger_time': 'Larger T\nT = 2600 s, E = 620 kJ',
+        'lower_energy': 'Lower E\nT = 2200 s, E = 380 kJ'}
+    legend_colors = {'default': '#999999', 'larger_time': '#BBBBBB', 'lower_energy': '#DDDDDD'}
+    handles=[Patch(facecolor=legend_colors[setting],edgecolor='#686868',
+                   hatch=hatches[setting],label=legend_labels[setting]) for setting in SETTINGS]
     fig.legend(handles=handles,loc='upper center',ncol=3,frameon=False,fontsize=13,
                bbox_to_anchor=(.535,1.0),handlelength=1.5,columnspacing=2.2)
     fig.canvas.draw();renderer=fig.canvas.get_renderer()
@@ -102,15 +114,44 @@ def plot(stats):
     plt.close(fig)
 
 
+
 def main():
-    rows = list(csv.DictReader(StringIO(SUMMARY_CSV)))
-    stats = {(row["setting"], row["variant_id"]):
-             {field: float(row[field]) for field in
-              ("mean_wcr_percent", "lower_95_percent", "upper_95_percent")}
-             for row in rows}
-    require(len(stats) == len(SETTINGS) * len(VARIANTS), "Incomplete ablation result grid")
+    global OUTPUT, POINTS, MAJOR, SETTINGS
+    parser = argparse.ArgumentParser(description=__doc__)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--archived", action="store_true", help="use the original embedded paper results")
+    source.add_argument("--results", type=Path, help="CSV emitted by experiment.py")
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    args = parser.parse_args()
+    OUTPUT = args.output.resolve()
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    result_path = args.results
+    if result_path is None and not args.archived:
+        candidate = Path(__file__).resolve().with_name("results.csv")
+        if candidate.is_file():
+            result_path = candidate
+    if result_path is not None:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "simulation"))
+        from sensitivity_cases import result_matrices, share_matrices
+        with result_path.open(newline="", encoding="utf-8") as stream:
+            present = {row["setting"] for row in csv.DictReader(stream)}
+        require(present <= set(SETTINGS), "Unknown budget setting in results")
+        SETTINGS = {name: budget for name, budget in SETTINGS.items() if name in present}
+        _, matrices, _, seeds = result_matrices(result_path, tuple(SETTINGS), VARIANTS,
+                                               key_field="setting", series_field="variant_id")
+        stats = {(setting, variant): {field: float(matrix[i, j]) for field, matrix in
+                 zip(("mean_wcr_percent", "lower_95_percent", "upper_95_percent"), matrices)}
+                 for i, setting in enumerate(SETTINGS) for j, variant in enumerate(VARIANTS)}
+        print(f"Drawing new ablation results: {len(seeds)} paired seeds per setting")
+    else:
+        rows = list(csv.DictReader(StringIO(SUMMARY_CSV)))
+        stats = {(row["setting"], row["variant_id"]):
+                 {field: float(row[field]) for field in
+                  ("mean_wcr_percent", "lower_95_percent", "upper_95_percent")}
+                 for row in rows}
+        require(len(stats) == len(SETTINGS) * len(VARIANTS), "Incomplete ablation result grid")
     plot(stats)
-    print(OUTPUT.name)
+    print(OUTPUT)
 
 
 if __name__ == "__main__":

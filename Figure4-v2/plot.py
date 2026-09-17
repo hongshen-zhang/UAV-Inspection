@@ -1,12 +1,16 @@
 """Redraw the Top/Sub decision example from recorded experiment values.
 
 The data below are the original nominal-mission observations and DP values
-(seed 2026092000), not a new simulation run.
+(seed 2026092000). --input instead reads freshly computed data from experiment.py.
 Requires: pip install matplotlib
 Run: python plot.py
+Fresh data: python experiment.py --output-dir results
+           python plot.py --input results/replay.json --output results/figure4-v2.pdf
 Output: figure4-v2.pdf next to this script.
 """
 from pathlib import Path
+import argparse
+import json
 import os
 
 import matplotlib
@@ -296,12 +300,18 @@ def clean_axis(ax):
     ax.xaxis.set_major_locator(MaxNLocator(4))
 
 
-def main():
-    data = RECORDED_DECISIONS
-    assert all(data['validation_against_formal_result'].values())
+def main(data=None, output=None):
+    data = RECORDED_DECISIONS if data is None else data
+    output = HERE / 'figure4-v2.pdf' if output is None else Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not all(data.get('validation_against_formal_result', {}).values()):
+        raise ValueError('Replay validation failed.')
     initial = data['top_decisions'][0]
-    candidates = sorted(initial['candidate_values'],
+    candidates = sorted((item for item in initial['candidate_values']
+                         if item['expected_value'] is not None),
                         key=lambda c: c['expected_value'], reverse=True)[:3]
+    if not candidates:
+        raise ValueError('The replay has no feasible initial candidates to display.')
     examples = {x['task']: x for x in data['sub_decisions']}
     fig = plt.figure(figsize=(7.4, 3.0), facecolor='white')
     fig.text(.06, .96, '(a) MTE-Top: select a task', fontsize=12.5,
@@ -332,10 +342,22 @@ def main():
     ax.set_xlabel('Expected mission reward', labelpad=7)
     clean_axis(ax)
 
-    for task, y in ((3, .69), (19, .35)):
+    # Preserve the published T3/T19 example when both tasks were visited.
+    # For a different seed, choose the first completion and first skip.
+    if 3 in examples and 19 in examples:
+        selected_examples = [3, 19]
+    else:
+        completed = [task for task, item in examples.items()
+                     if item['selected_action']['mode'] != 'skip']
+        skipped = [task for task, item in examples.items()
+                   if item['selected_action']['mode'] == 'skip']
+        selected_examples = (completed[:1] + skipped[:1])
+        selected_examples += [task for task in examples if task not in selected_examples]
+        selected_examples = selected_examples[:2]
+    for task, y in zip(selected_examples, (.69, .35)):
         ex = examples[task]
         mode = ex['selected_action']['mode']
-        decision = 'Local' if mode == 'local' else 'skip'
+        decision = {'local': 'Local', 'mec': 'MEC', 'skip': 'skip'}[mode]
         fig.text(.57, y+.055, f'T{task}', fontsize=12, fontweight='bold')
         fig.text(.57, y-.025,
                  f"Workload: {ex['observed_workload_gcy']:.1f} Gcycles",
@@ -351,15 +373,21 @@ def main():
                         if a['mode'] != 'skip')
             skip = next(a['total_value'] for a in ex['alternatives']
                         if a['mode'] == 'skip')
-            reason = f'Expected reward: {total:.1f} (complete) > {skip:.1f} (skip)'
+            comparison = '>' if total > skip else ('<' if total < skip else '=')
+            reason = f'Expected reward: {total:.1f} (complete) {comparison} {skip:.1f} (skip)'
         else:
             reason = f"Workload limit: {ex['maximum_feasible_workload_gcy']:.1f} Gcycles"
         fig.text(.57, y-.12, reason, fontsize=10, color='#555555')
 
-    fig.savefig(HERE / 'figure4-v2.pdf', dpi=300,
+    fig.savefig(output, dpi=300,
                 bbox_inches='tight', pad_inches=.08)
     plt.close(fig)
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--input', type=Path, help='replay.json produced by experiment.py')
+    parser.add_argument('--output', type=Path, default=HERE / 'figure4-v2.pdf')
+    args = parser.parse_args()
+    data = json.loads(args.input.read_text(encoding='utf-8')) if args.input else None
+    main(data, args.output)
