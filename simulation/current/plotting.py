@@ -151,6 +151,12 @@ def comparison(frame):
     frame = frame.copy()
     frame["point"] = 1
     summary, methods = summarize(frame)
+    # Figure 4 has its own display order and citations; other figures stay unchanged.
+    jitter_indices = {method: index for index, method in enumerate(methods)}
+    display_order = (*METHODS[:-3], "Rollout", "IO", "ADAPT")
+    order = {method: index for index, method in enumerate(display_order)}
+    methods.sort(key=lambda method: order.get(method, len(order)))
+    labels = {"Rollout": "Rollout [22]", "IO": "IO [23]", "ADAPT": "ADAPT [24]"}
     subtitles = {"Proposed": "Shadow prices + stochastic DP", "Weight Greedy": "Min cost + max weight",
         "Mean-workload Greedy": "Min cost + max weight/cost", "Mean-workload DP": "Shadow prices + mean DP",
         "Distribution-aware Myopic": "Min cost + max expected reward", "Nearest Neighbor": "Min cost + nearest task",
@@ -164,14 +170,15 @@ def comparison(frame):
         values = frame[frame.method.eq(method)].sort_values("seed").wcr.to_numpy()*100
         row = summary[summary.method.eq(method)].iloc[0]
         color = COLORS.get(method, f"C{j % 10}")
-        jitter = np.random.default_rng(BOOTSTRAP_SEED+j).uniform(-.065, .065, len(values))
+        jitter = np.random.default_rng(BOOTSTRAP_SEED+jitter_indices[method]).uniform(-.065, .065, len(values))
         ax.scatter(values, j+jitter, s=9, color=color, alpha=.05, linewidths=0)
         ax.errorbar(row["mean"], j, xerr=[[row["mean"]-row.ci_low], [row.ci_high-row["mean"]]],
                     fmt=MARKERS.get(method, "o"), color=color, capsize=4.8, elinewidth=1.35,
                     markersize=4.5 if method == "Mean-workload DP" else 6)
         ax.annotate(f'{row["mean"]:.1f}%', (row["mean"], j), xytext=(0, 9),
-                    textcoords="offset points", ha="center", fontsize=11.3)
-        block = VPacker(children=[TextArea(LABELS.get(method, method), textprops={"fontsize":11.3}),
+                    textcoords="offset points", ha="center", va="bottom", fontsize=12.5)
+        block = VPacker(children=[TextArea(labels.get(method, method),
+            textprops={"fontsize":12.0 if method in labels else 11.3}),
             TextArea(subtitles.get(method, ""), textprops={"fontsize":8.6, "color":"#555555"})],
             align="center", pad=0, sep=2.8)
         ax.add_artist(AnnotationBbox(block, (-.215, j), xycoords=ax.get_yaxis_transform(),
@@ -181,6 +188,7 @@ def comparison(frame):
     ax.set_yticks([])
     ax.set_xlabel("WCR (%)")
     style(ax)
+    ax.tick_params(axis="x", labelsize=14)
     ax.grid(axis="y", visible=False)
     n = int(summary.n.iloc[0])
     ax.text(.29, .979, f"Same workload distributions ({n} samples)", transform=ax.transAxes,
