@@ -130,7 +130,8 @@ def plot_series(ax, summary, methods):
             markeredgewidth=.65, elinewidth=1.35, capsize=4.8, capthick=1, zorder=12-j)
 
 
-def legend(fig, ax, methods, top=.985, *, display_order=None, display_labels=None):
+def legend(fig, ax, methods, top=.985, *, display_order=None, display_labels=None,
+           fontsize=10.4, columnspacing=1.35, handlelength=2.2):
     handles, labels = ax.get_legend_handles_labels()
     if display_order is not None:
         # Reorder only legend entries, never the curves or their style mappings.
@@ -144,7 +145,7 @@ def legend(fig, ax, methods, top=.985, *, display_order=None, display_labels=Non
     order = [i for col in range(columns) for i in range(col, len(handles), columns)]
     fig.legend([handles[i] for i in order], [labels[i] for i in order],
                loc="upper center", bbox_to_anchor=(.54, top), ncol=columns,
-               fontsize=10.4, columnspacing=1.35, handlelength=2.2, frameon=False)
+               fontsize=fontsize, columnspacing=columnspacing, handlelength=handlelength, frameon=False)
 
 
 def fit_wcr(ax, summary, minimum=0, maximum=60):
@@ -225,6 +226,13 @@ def sweep(frame, study):
         legend(fig, ax, methods,
                display_order=(*METHODS[:-3], "Rollout", "IO", "ADAPT"),
                display_labels={"Rollout": "Rollout [22]", "IO": "IO [23]", "ADAPT": "ADAPT [24]"})
+    elif study == "Figure6":
+        ax.set_ylim(0, 60)
+        ax.set_yticks(np.arange(0, 61, 10))
+        ax.tick_params(axis="both", labelsize=14)
+        legend(fig, ax, methods, display_order=(*METHODS[:-3], "Rollout", "IO", "ADAPT"),
+               display_labels={"Rollout": "Rollout [22]", "IO": "IO [23]", "ADAPT": "ADAPT [24]"},
+               fontsize=12.0, columnspacing=.8, handlelength=1.6)
     else:
         legend(fig, ax, methods)
     labels = {"Figure5": r"Mission time budget $T$ (s)", "Figure6": r"Onboard energy budget $E$ (kJ)",
