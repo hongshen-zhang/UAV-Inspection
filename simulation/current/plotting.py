@@ -222,14 +222,15 @@ def sweep(frame, study):
     fit_wcr(ax, summary, minimum=20 if study in ("Figure9", "Figure11") else 0,
             maximum=100 if study == "Figure10" else 80 if study in ("Figure9", "Figure11") else 60)
     style(ax)
-    if study in ("Figure9", "Figure10"):
+    if study == "Figure10":
         legend(fig, ax, methods,
                display_order=(*METHODS[:-3], "Rollout", "IO", "ADAPT"),
                display_labels={"Rollout": "Rollout [22]", "IO": "IO [23]", "ADAPT": "ADAPT [24]"})
-    elif study in ("Figure5", "Figure6", "Figure11"):
-        lower = 20 if mec else 0
-        ax.set_ylim(lower, 60)
-        ax.set_yticks(np.arange(lower, 61, 10))
+    elif study in ("Figure5", "Figure6", "Figure9", "Figure11"):
+        lower = 20 if study in ("Figure9", "Figure11") else 0
+        upper = 70 if study == "Figure9" else 60
+        ax.set_ylim(lower, upper)
+        ax.set_yticks(np.arange(lower, upper+1, 10))
         ax.tick_params(axis="both", labelsize=14)
         legend(fig, ax, methods, display_order=(*METHODS[:-3], "Rollout", "IO", "ADAPT"),
                display_labels={"Rollout": "Rollout [22]", "IO": "IO [23]", "ADAPT": "ADAPT [24]"},
