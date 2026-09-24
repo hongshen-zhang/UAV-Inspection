@@ -130,8 +130,15 @@ def plot_series(ax, summary, methods):
             markeredgewidth=.65, elinewidth=1.35, capsize=4.8, capthick=1, zorder=12-j)
 
 
-def legend(fig, ax, methods, top=.985):
+def legend(fig, ax, methods, top=.985, *, display_order=None, display_labels=None):
     handles, labels = ax.get_legend_handles_labels()
+    if display_order is not None:
+        # Reorder only legend entries, never the curves or their style mappings.
+        entries = dict(zip(methods, zip(handles, labels)))
+        names = [name for name in display_order if name in entries]
+        names += [name for name in methods if name not in names]
+        handles = [entries[name][0] for name in names]
+        labels = [(display_labels or {}).get(name, entries[name][1]) for name in names]
     # Matplotlib fills legend columns first; rearrange so readers see rows first.
     columns = min(3, len(methods))
     order = [i for col in range(columns) for i in range(col, len(handles), columns)]
@@ -214,7 +221,12 @@ def sweep(frame, study):
     fit_wcr(ax, summary, minimum=20 if study in ("Figure9", "Figure11") else 0,
             maximum=100 if study == "Figure10" else 80 if study in ("Figure9", "Figure11") else 60)
     style(ax)
-    legend(fig, ax, methods)
+    if study == "Figure5":
+        legend(fig, ax, methods,
+               display_order=(*METHODS[:-3], "Rollout", "IO", "ADAPT"),
+               display_labels={"Rollout": "Rollout [22]", "IO": "IO [23]", "ADAPT": "ADAPT [24]"})
+    else:
+        legend(fig, ax, methods)
     labels = {"Figure5": r"Mission time budget $T$ (s)", "Figure6": r"Onboard energy budget $E$ (kJ)",
               "Figure9": "Workload uncertainty multiplier", "Figure10": "Workload multiplier",
               "Figure11": r"MEC CPU frequency $F_m$ (GHz)"}
