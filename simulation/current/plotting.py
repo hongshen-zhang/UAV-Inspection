@@ -226,9 +226,10 @@ def sweep(frame, study):
         legend(fig, ax, methods,
                display_order=(*METHODS[:-3], "Rollout", "IO", "ADAPT"),
                display_labels={"Rollout": "Rollout [22]", "IO": "IO [23]", "ADAPT": "ADAPT [24]"})
-    elif study == "Figure6":
-        ax.set_ylim(0, 60)
-        ax.set_yticks(np.arange(0, 61, 10))
+    elif study in ("Figure6", "Figure11"):
+        lower = 20 if mec else 0
+        ax.set_ylim(lower, 60)
+        ax.set_yticks(np.arange(lower, 61, 10))
         ax.tick_params(axis="both", labelsize=14)
         legend(fig, ax, methods, display_order=(*METHODS[:-3], "Rollout", "IO", "ADAPT"),
                display_labels={"Rollout": "Rollout [22]", "IO": "IO [23]", "ADAPT": "ADAPT [24]"},
@@ -258,14 +259,15 @@ def sweep(frame, study):
                          markersize=7.3, linewidth=2, label=name)
         for boundary in (1., 2.5):
             axes[1].axvline(boundary, color="#777777", linewidth=1.1, linestyle=(0,(4,3)))
-        axes[1].text(1.75, 81, "UAV local CPU range\n1.0-2.5 GHz", ha="center", fontsize=11.3, color="#555555")
+        axes[1].text(1.75, 81, "UAV local CPU range\n1.0-2.5 GHz", ha="center", fontsize=12.0, color="#555555")
         axes[1].set_ylim(-4, 108)
         axes[1].set_yticks([0,25,50,75,100])
         axes[1].set_ylabel("Execution share (%)")
         axes[1].set_xlabel(labels[study])
         axes[1].set_title("(b) Execution modes of Proposed", fontsize=14, pad=12)
-        axes[1].legend(frameon=False, fontsize=11.3, loc="center right")
+        axes[1].legend(frameon=False, fontsize=12.0, loc="center right")
         style(axes[1])
+        axes[1].tick_params(axis="both", labelsize=14)
     else:
         ax.set_xlabel(labels[study])
     return fig
