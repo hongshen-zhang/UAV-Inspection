@@ -183,7 +183,8 @@ def comparison(frame):
             align="center", pad=0, sep=2.8)
         ax.add_artist(AnnotationBbox(block, (-.215, j), xycoords=ax.get_yaxis_transform(),
                       box_alignment=(.5,.5), frameon=False, annotation_clip=False))
-    ax.set_xlim(0, max(70, 10*np.ceil((summary.ci_high.max()+3)/10)))
+    ax.set_xlim(0, 60)
+    ax.set_xticks(np.arange(0, 61, 10))
     ax.set_ylim(len(methods)-.45, -1.65)
     ax.set_yticks([])
     ax.set_xlabel("WCR (%)")
