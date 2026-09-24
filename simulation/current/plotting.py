@@ -221,7 +221,7 @@ def sweep(frame, study):
     fit_wcr(ax, summary, minimum=20 if study in ("Figure9", "Figure11") else 0,
             maximum=100 if study == "Figure10" else 80 if study in ("Figure9", "Figure11") else 60)
     style(ax)
-    if study == "Figure5":
+    if study in ("Figure5", "Figure9"):
         legend(fig, ax, methods,
                display_order=(*METHODS[:-3], "Rollout", "IO", "ADAPT"),
                display_labels={"Rollout": "Rollout [22]", "IO": "IO [23]", "ADAPT": "ADAPT [24]"})
