@@ -26,7 +26,7 @@ METHODS = ("Proposed", "Weight Greedy", "Mean-workload Greedy", "Mean-workload D
 COLORS = dict(zip(METHODS, ("#EE2922", "#4F7CC7", "#F68C28", "#8673B5", "#4A7937",
                           "#B2B2B2", "#343576", "#269DA6", "#B65B9D")))
 MARKERS = dict(zip(METHODS, ("o", "^", "D", "s", "P", "v", ">", "h", "X")))
-LABELS = {"IO": "IO [26]", "Rollout": "Rollout [25]", "ADAPT": "ADAPT [27]"}
+LABELS = {"IO": "IO [31]", "Rollout": "Rollout [30]", "ADAPT": "ADAPT [32]"}
 ALIASES = {"Priority Greedy": "Weight Greedy", "Shiri-IO": "IO",
            "Novoa-Rollout": "Rollout", "ADAPT-IACS": "ADAPT"}
 VARIANTS = tuple(ABLATION_VARIANTS)
@@ -164,7 +164,7 @@ def comparison(frame):
     display_order = (*METHODS[:-3], "Rollout", "IO", "ADAPT")
     order = {method: index for index, method in enumerate(display_order)}
     methods.sort(key=lambda method: order.get(method, len(order)))
-    labels = {"Rollout": "Rollout [25]", "IO": "IO [26]", "ADAPT": "ADAPT [27]"}
+    labels = {"Rollout": "Rollout [30]", "IO": "IO [31]", "ADAPT": "ADAPT [32]"}
     subtitles = {"Proposed": "Shadow prices + stochastic DP", "Weight Greedy": "Min cost + max weight",
         "Mean-workload Greedy": "Min cost + max weight/cost", "Mean-workload DP": "Shadow prices + mean DP",
         "Distribution-aware Myopic": "Min cost + max expected reward", "Nearest Neighbor": "Min cost + nearest task",
@@ -229,7 +229,7 @@ def sweep(frame, study):
         ax.set_yticks(np.arange(lower, upper+1, 20 if study == "Figure10" else 10))
         ax.tick_params(axis="both", labelsize=14)
         legend(fig, ax, methods, display_order=(*METHODS[:-3], "Rollout", "IO", "ADAPT"),
-               display_labels={"Rollout": "Rollout [25]", "IO": "IO [26]", "ADAPT": "ADAPT [27]"},
+               display_labels={"Rollout": "Rollout [30]", "IO": "IO [31]", "ADAPT": "ADAPT [32]"},
                fontsize=12.0, columnspacing=.8, handlelength=1.6)
     else:
         legend(fig, ax, methods)
